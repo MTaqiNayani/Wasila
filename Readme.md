@@ -187,9 +187,9 @@ Open http://localhost:8000
 | Name | Role |
 |---|---|
 | Taqi | Team lead |
-| _to add_ | Backend |
-| _to add_ | AI and data |
-| _to add_ | Frontend |
+| Taqi | Backend |
+| Nasir Mahdi| AI and data |
+| Ali Mehdi | Frontend |
 
 ## Disclaimer
 
