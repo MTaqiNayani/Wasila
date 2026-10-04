@@ -60,10 +60,20 @@ Jamaat's aalim.
 - Medical questions: do not diagnose or give medical advice. You may explain Jamaat medical-assistance \
 procedures from the documents. If something sounds urgent or life-threatening, tell the member to call \
 emergency services (112, or 108 for an ambulance) first.
-- Never ask for or repeat Aadhaar, PAN, bank or card numbers. Personal details are handled in the \
-member's profile, not in this chat.
-- You cannot see member records, book appointments or submit applications from this chat. Point the \
-member to the matching section of Wasila (Medical, Scholarship, My Requests) instead."""
+- Never ask for or repeat Aadhaar, PAN, bank or card numbers.
+- You cannot book appointments or submit applications from this chat. Point the member to the matching \
+section of Wasila (My Documents, Medical, Scholarship, My Requests) instead.
+
+The member's saved details:
+- The latest message may include <member_details>: details this member uploaded and confirmed in My \
+Documents (for example their marksheet). They belong to this member only.
+- When the member asks about an admission, scholarship or other application, use them: say which of the \
+required details are already on file and will be filled in for them (name the values, e.g. board, \
+marks, percentage), and list only what is still missing. Do not ask them to type details that are \
+already saved.
+- Requirements and rules still come only from <documents>; <member_details> only tells you what the \
+member already has. If there are no member details and the service needs them, suggest uploading the \
+document in My Documents."""
 
 _EMERGENCY = re.compile(
     r"\b(emergency|unconscious|not breathing|heart attack|stroke|severe bleeding|bleeding heavily|"
@@ -150,7 +160,9 @@ def cited_sources(text: str, sources: list[Source]) -> list[Source]:
     return [s for s in sources if s.number in numbers]
 
 
-def build_messages(question: str, history: list[dict], sources: list[Source]) -> list[dict]:
+def build_messages(
+    question: str, history: list[dict], sources: list[Source], member_details: str = ""
+) -> list[dict]:
     """Plain-text history plus the new question with its retrieved passages.
 
     Passages go in the latest user turn, not the system prompt, so the system
@@ -160,7 +172,10 @@ def build_messages(question: str, history: list[dict], sources: list[Source]) ->
     # The API needs the conversation to start with a user turn.
     while past and past[0]["role"] != "user":
         past.pop(0)
-    turn = f"{format_documents(sources)}\n\nMember's question: {question}"
+    turn = format_documents(sources)
+    if member_details:
+        turn += f"\n\n<member_details>\n{member_details}\n</member_details>"
+    turn += f"\n\nMember's question: {question}"
     return past + [{"role": "user", "content": turn}]
 
 
@@ -178,19 +193,25 @@ def speech_text(text: str, emergency: bool = False) -> str:
 
 
 def answer_question(
-    question: str, history: list[dict], llm=None, client=None, voice: bool = False
+    question: str,
+    history: list[dict],
+    llm=None,
+    client=None,
+    voice: bool = False,
+    member_details: str = "",
 ) -> Answer:
     """Retrieve passages and generate a grounded answer.
 
     `question` and `history` must already be masked (see `prepare_question`).
     `voice=True` asks for a short answer suited to being spoken by the avatar.
+    `member_details` are the member's own saved document details, used to pre-fill applications.
     """
     answer = Answer(emergency=is_emergency(question))
     answer.sources = retrieve(retrieval_query(question, history), client=client)
     request = {
         "model": os.getenv("OPENAI_MODEL") or DEFAULT_MODEL,
         "instructions": SYSTEM_PROMPT + (VOICE_PROMPT if voice else ""),
-        "input": build_messages(question, history, answer.sources),
+        "input": build_messages(question, history, answer.sources, member_details),
         "max_output_tokens": 4000,
         "store": False,
     }

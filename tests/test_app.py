@@ -8,7 +8,7 @@ from core import rag
 
 @pytest.fixture
 def client(monkeypatch):
-    def fake_answer(question, history, voice=False):
+    def fake_answer(question, history, voice=False, member_details=""):
         source = rag.Source(1, "Medical Assistance", "Documents required", "medical.md", "x", 0.8)
         return rag.Answer(
             text="Bring your membership card [1].",
@@ -18,6 +18,7 @@ def client(monkeypatch):
         )
 
     monkeypatch.setattr(wasila.rag, "answer_question", fake_answer)
+    monkeypatch.setattr(wasila.profile, "details_for_chat", lambda oneid: "")
     wasila.app.config["TESTING"] = True
     with wasila.app.test_client() as client:
         yield client
@@ -51,7 +52,7 @@ def test_member_asks_and_sees_cited_answer(client):
 
 
 def test_answer_html_is_escaped(client, monkeypatch):
-    monkeypatch.setattr(wasila.rag, "answer_question", lambda q, h, voice=False: rag.Answer(text="<script>x</script>"))
+    monkeypatch.setattr(wasila.rag, "answer_question", lambda q, h, voice=False, member_details="": rag.Answer(text="<script>x</script>"))
     sign_in(client, "member")
     client.post("/chat", data={"question": "hi", "csrf": csrf(client, "/chat")})
     assert "<script>x</script>" not in client.get("/chat").get_data(as_text=True)
@@ -103,7 +104,7 @@ def test_avatar_api_needs_csrf_and_member(client):
 def test_single_helpdesk_page(client, monkeypatch):
     seen = []
     monkeypatch.setattr(
-        wasila.rag, "answer_question", lambda q, h, voice=False: seen.append(voice) or rag.Answer(text="ok")
+        wasila.rag, "answer_question", lambda q, h, voice=False, member_details="": seen.append(voice) or rag.Answer(text="ok")
     )
     sign_in(client, "member")
     assert client.get("/avatar").headers["Location"].endswith("/chat")

@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block title %}My Documents{% endblock %}
+{% block main_class %}documents-page{% endblock %}
+{% block content %}
+<header class="docs-hero">
+  <h1>Upload once. <span>Never fill it again.</span></h1>
+  <p class="muted">Upload your marksheet. Wasila reads the details, you check them, and they're filled in for you in every admission and scholarship form.</p>
+</header>
+
+<div class="docs-layout">
+  <!-- left: upload + saved list -->
+  <section class="docs-left">
+    <form class="dropzone" id="dropzone" method="post" action="{{ url_for('upload_document') }}" enctype="multipart/form-data">
+      <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+      <svg class="folder" viewBox="0 0 64 52" aria-hidden="true">
+        <defs><linearGradient id="fg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd95a"/><stop offset="1" stop-color="#ffb35c"/></linearGradient></defs>
+        <path d="M4 4h18l6 6h32a4 4 0 0 1 4 4v4H0V8a4 4 0 0 1 4-4z" fill="#f7c443"/>
+        <rect x="0" y="14" width="64" height="38" rx="4" fill="url(#fg)"/>
+      </svg>
+      <h2>Drag &amp; drop your marksheet</h2>
+      <p class="muted small">PDF{% if ai %}, JPG or PNG{% endif %} · up to 10 MB</p>
+      <label class="btn btn-gold" for="file">Browse files</label>
+      <input class="sr-only" type="file" id="file" name="file" accept=".pdf{% if ai %},.jpg,.jpeg,.png,.webp{% endif %},.txt" required>
+      <button class="btn btn-ghost upload-submit" type="submit">Upload &amp; read</button>
+      <p class="dropzone-busy" aria-live="polite">Reading your document…</p>
+    </form>
+
+    {% if error %}<p class="alert">{{ error }}</p>{% endif %}
+
+    <div class="saved-docs">
+      <h2>My saved documents</h2>
+      {% if saved %}
+      <ul>
+        {% for d in saved %}
+        <li class="{{ 'active' if selected and selected.id == d.id }}">
+          <a href="{{ url_for('documents', doc=d.id) }}">
+            <span class="doc-icon" aria-hidden="true">📄</span>
+            <span><strong>{{ d.fields.exam or 'Marksheet' }}{% if d.fields.year %} · {{ d.fields.year }}{% endif %}</strong>
+              <span class="muted small">{{ d.filename }}</span></span>
+          </a>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="muted small">Nothing saved yet.</p>
+      {% endif %}
+    </div>
+  </section>
+
+  <!-- right: extracted details -->
+  <section class="docs-right">
+    {% if pending %}
+    <form class="card details-card" method="post" action="{{ url_for('save_document') }}">
+      <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+      <div class="details-head">
+        <div>
+          <h2>Check the details</h2>
+          <p class="muted small">Read from <strong>{{ pending.filename }}</strong>{% if pending.method == 'rules' %} · basic reader{% else %} · AI reader{% endif %}. Correct anything that's wrong.</p>
+        </div>
+        <span class="badge badge-pending">Not saved</span>
+      </div>
+
+      <div class="field-grid">
+        {% for key, label in fields %}
+        <label class="field{% if not pending.fields[key] %} missing{% endif %}">
+          <span>{{ label }}</span>
+          <input name="{{ key }}" value="{{ pending.fields[key] }}" placeholder="Not found">
+        </label>
+        {% endfor %}
+      </div>
+
+      <h3>Subjects</h3>
+      <table class="subjects">
+        <thead><tr><th>Subject</th><th>Marks</th><th>Out of</th></tr></thead>
+        <tbody>
+          {% for s in pending.subjects %}
+          <tr>
+            <td><input name="subject_name" value="{{ s.name }}" aria-label="Subject"></td>
+            <td><input name="subject_marks" value="{{ s.marks }}" inputmode="numeric" aria-label="Marks"></td>
+            <td><input name="subject_max" value="{{ s.max_marks }}" inputmode="numeric" aria-label="Out of"></td>
+          </tr>
+          {% endfor %}
+          {% for _ in range(2) %}
+          <tr class="extra">
+            <td><input name="subject_name" placeholder="Add subject" aria-label="Subject"></td>
+            <td><input name="subject_marks" inputmode="numeric" aria-label="Marks"></td>
+            <td><input name="subject_max" inputmode="numeric" aria-label="Out of"></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      {% if pending.raw_text %}
+      <details class="raw-text">
+        <summary>Text read from the document</summary>
+        <pre>{{ pending.raw_text }}</pre>
+      </details>
+      {% endif %}
+
+      <p class="consent">By saving, you agree that Wasila may reuse these details to pre-fill your Jamaat admission and scholarship applications. You can delete them at any time.</p>
+      <div class="details-actions">
+        <button class="btn btn-primary" type="submit">Save to my profile</button>
+        <button class="btn btn-ghost" type="submit" formaction="{{ url_for('discard_upload') }}" formnovalidate>Discard</button>
+      </div>
+    </form>
+
+    {% elif selected %}
+    <article class="card details-card">
+      <div class="details-head">
+        <div>
+          <h2>{{ selected.fields.exam or 'Marksheet' }}</h2>
+          <p class="muted small">{{ selected.filename }} · saved {{ selected.saved_at[:10] }}</p>
+        </div>
+        <span class="badge badge-saved">{{ 'Saved just now' if just_saved else 'Saved' }}</span>
+      </div>
+
+      {% if selected.fields.percentage %}
+      <div class="score">
+        <span class="score-value">{{ selected.fields.percentage }}<small>%</small></span>
+        <span class="muted small">{% if selected.fields.total_marks %}{{ selected.fields.total_marks }}{% if selected.fields.max_marks %} / {{ selected.fields.max_marks }}{% endif %} marks{% endif %}{% if selected.fields.result %} · {{ selected.fields.result }}{% endif %}</span>
+      </div>
+      {% endif %}
+
+      <dl class="field-list">
+        {% for key, label in fields if key not in ('total_marks', 'max_marks', 'percentage', 'result') and selected.fields[key] %}
+        <div><dt>{{ label }}</dt><dd>{{ selected.fields[key] }}</dd></div>
+        {% endfor %}
+      </dl>
+
+      {% if selected.subjects %}
+      <h3>Subjects</h3>
+      <table class="subjects readonly">
+        <thead><tr><th>Subject</th><th>Marks</th></tr></thead>
+        <tbody>
+          {% for s in selected.subjects %}
+          <tr><td>{{ s.name }}</td><td>{{ s.marks }}{% if s.max_marks %} <span class="muted">/ {{ s.max_marks }}</span>{% endif %}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+
+      <p class="prefill-note">✓ These details will be filled in automatically when you ask the helpdesk about admissions or scholarships.</p>
+      <div class="details-actions">
+        <a class="btn btn-primary" href="{{ url_for('chat') }}">Ask about 11th admission</a>
+        <form method="post" action="{{ url_for('delete_document', doc_id=selected.id) }}">
+          <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+          <button class="btn btn-ghost" type="submit">Delete</button>
+        </form>
+      </div>
+    </article>
+
+    {% else %}
+    <div class="card details-empty">
+      <span class="empty-icon" aria-hidden="true">🗂️</span>
+      <h2>Extracted details appear here</h2>
+      <p class="muted">Upload a marksheet on the left. You'll see the name, board, marks and percentage Wasila reads from it, and can fix anything before saving.</p>
+    </div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/documents.js') }}"></script>
+{% endblock %}
